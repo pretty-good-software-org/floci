@@ -248,6 +248,7 @@ floci:
       proxy-max-port: 9499
     ec2:
       enabled: true
+      dedicated-host-scrub-duration: 1s
       imds-port: 9169
       ssh-port-range-start: 2200
       ssh-port-range-end: 2299

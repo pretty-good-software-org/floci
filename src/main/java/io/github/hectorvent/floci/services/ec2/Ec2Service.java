@@ -110,6 +110,7 @@ import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class Ec2Service implements ContainerTeardown, ResourceProvider {
+    static final String INSTANCE_STORE_FILE = "ec2-instances.json";
 
     private static final Logger LOG = Logger.getLogger(Ec2Service.class);
 
@@ -210,7 +211,7 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
                 storageFactory.create("ec2", "ec2-route-tables.json", new TypeReference<Map<String, RouteTable>>() {}),
                 storageFactory.create("ec2", "ec2-key-pairs.json", new TypeReference<Map<String, KeyPair>>() {}),
                 storageFactory.create("ec2", "ec2-addresses.json", new TypeReference<Map<String, Address>>() {}),
-                storageFactory.create("ec2", "ec2-instances.json", new TypeReference<Map<String, Instance>>() {}),
+                storageFactory.create("ec2", INSTANCE_STORE_FILE, new TypeReference<Map<String, Instance>>() {}),
                 storageFactory.create("ec2", "ec2-volumes.json", new TypeReference<Map<String, Volume>>() {}),
                 storageFactory.create("ec2", "ec2-registered-images.json", new TypeReference<Map<String, Image>>() {}),
                 storageFactory.create("ec2", "ec2-snapshots.json", new TypeReference<Map<String, Snapshot>>() {}),

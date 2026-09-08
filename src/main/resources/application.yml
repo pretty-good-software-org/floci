@@ -447,6 +447,7 @@ floci:
       keep-running-on-shutdown: false
     ec2:
       enabled: true
+      dedicated-host-scrub-duration: 1s
       imds-port: 9169
       # Sweep EC2 containers left on the daemon by a previous run that died mid-launch or
       # mid-terminate (SIGKILL, OOM, docker kill), which no surviving record refers to.
