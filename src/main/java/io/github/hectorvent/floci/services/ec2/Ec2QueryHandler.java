@@ -42,15 +42,18 @@ public class Ec2QueryHandler {
     private final FlowLogService flowLogService;
     private final Ec2EbsEncryptionService ebsEncryptionService;
     private final Ec2IpamService ipamService;
+    private final Ec2DedicatedHostQueryHandler dedicatedHosts;
 
     @Inject
     public Ec2QueryHandler(Ec2Service service, EmulatorConfig config, FlowLogService flowLogService,
-                           Ec2EbsEncryptionService ebsEncryptionService, Ec2IpamService ipamService) {
+                           Ec2EbsEncryptionService ebsEncryptionService, Ec2IpamService ipamService,
+                           Ec2DedicatedHostQueryHandler dedicatedHosts) {
         this.service = service;
         this.config = config;
         this.flowLogService = flowLogService;
         this.ebsEncryptionService = ebsEncryptionService;
         this.ipamService = ipamService;
+        this.dedicatedHosts = dedicatedHosts;
     }
 
     public Response handle(String action, MultivaluedMap<String, String> params, String region) {
@@ -58,6 +61,9 @@ public class Ec2QueryHandler {
         try {
             return switch (action) {
                 // Instances
+                case "AllocateHosts" -> dedicatedHosts.allocate(params, region);
+                case "DescribeHosts" -> dedicatedHosts.describe(params, region);
+                case "ReleaseHosts" -> dedicatedHosts.release(params, region);
                 case "RunInstances" -> handleRunInstances(params, region);
                 case "CreateFleet" -> handleCreateFleet(params, region);
                 case "DescribeInstances" -> handleDescribeInstances(params, region);
@@ -302,7 +308,7 @@ public class Ec2QueryHandler {
 
     // ─── Parameter helpers ────────────────────────────────────────────────────
 
-    private List<String> getList(MultivaluedMap<String, String> p, String prefix) {
+    static List<String> getList(MultivaluedMap<String, String> p, String prefix) {
         List<String> result = new ArrayList<>();
         for (int i = 1; ; i++) {
             String v = p.getFirst(prefix + "." + i);
@@ -336,7 +342,7 @@ public class Ec2QueryHandler {
         }
     }
 
-    private Map<String, List<String>> getFilters(MultivaluedMap<String, String> p) {
+    static Map<String, List<String>> getFilters(MultivaluedMap<String, String> p) {
         Map<String, List<String>> filters = new LinkedHashMap<>();
         for (int i = 1; ; i++) {
             String name = p.getFirst("Filter." + i + ".Name");
@@ -600,9 +606,29 @@ public class Ec2QueryHandler {
 
     // ─── Instance handlers ────────────────────────────────────────────────────
 
+    private void validateHostPlacement(MultivaluedMap<String, String> parameters, LaunchTemplateData template) {
+        Set<String> supported = Set.of("Placement.HostId", "Placement.Tenancy", "Placement.AvailabilityZone");
+        for (String key : parameters.keySet()) {
+            if (key.startsWith("Placement.") && !supported.contains(key)) {
+                throw new AwsException("UnsupportedOperation", "RunInstances: unsupported host placement option " + key, 400);
+            }
+        }
+        if (template == null || template.getPlacement() == null) { return; }
+        LaunchTemplateData.Placement placement = template.getPlacement();
+        if (placement.getAffinity() != null || placement.getAvailabilityZoneId() != null
+                || placement.getGroupId() != null || placement.getGroupName() != null
+                || placement.getHostResourceGroupArn() != null || placement.getPartitionNumber() != null
+                || placement.getSpreadDomain() != null) {
+            throw new AwsException("UnsupportedOperation", "RunInstances: unsupported launch-template host placement options", 400);
+        }
+    }
+
     private Response handleRunInstances(MultivaluedMap<String, String> p, String region) {
         String imageId = p.getFirst("ImageId");
         String instanceType = p.getFirst("InstanceType");
+        String hostId = p.getFirst("Placement.HostId");
+        String tenancy = p.getFirst("Placement.Tenancy");
+        String availabilityZone = p.getFirst("Placement.AvailabilityZone");
         int minCount = Integer.parseInt(p.getOrDefault("MinCount", List.of("1")).get(0));
         int maxCount = Integer.parseInt(p.getOrDefault("MaxCount", List.of("1")).get(0));
         String keyName = p.getFirst("KeyName");
@@ -664,6 +690,11 @@ public class Ec2QueryHandler {
 
         LaunchTemplateData launchTemplateData = resolveRunInstancesLaunchTemplateData(p, region);
         if (launchTemplateData != null) {
+            if (launchTemplateData.getPlacement() != null) {
+                hostId = firstNonBlank(hostId, launchTemplateData.getPlacement().getHostId());
+                tenancy = firstNonBlank(tenancy, launchTemplateData.getPlacement().getTenancy());
+                availabilityZone = firstNonBlank(availabilityZone, launchTemplateData.getPlacement().getAvailabilityZone());
+            }
             if (launchTemplateData.getMetadataOptions() != null) {
                 metadataOptions = LaunchTemplateData.MetadataOptions.merge(
                         launchTemplateData.getMetadataOptions(), metadataOptions);
@@ -685,9 +716,23 @@ public class Ec2QueryHandler {
             }
         }
 
-        Reservation res = service.runInstances(region, imageId, instanceType, minCount, maxCount,
-                keyName, sgIds, subnetId, clientToken, instanceTags, userData, iamInstanceProfileArn,
-                associatePublicIp, networkInterfaceId, networkInterfaceDeviceIndex, null, metadataOptions);
+        Reservation res;
+        if (hostId != null || "host".equals(tenancy)) {
+            if (hostId == null || hostId.isBlank()) {
+                throw new AwsException("UnsupportedOperation", "RunInstances: explicit HostId is required; auto-placement is unsupported", 400);
+            }
+            if (tenancy != null && !"host".equals(tenancy)) {
+                throw new AwsException("InvalidParameterCombination", "RunInstances: HostId requires host tenancy", 400);
+            }
+            validateHostPlacement(p, launchTemplateData);
+            res = service.runInstancesOnHost(region, hostId, imageId, instanceType, minCount, maxCount,
+                    keyName, sgIds, subnetId, clientToken, instanceTags, userData, iamInstanceProfileArn,
+                    associatePublicIp, networkInterfaceId, networkInterfaceDeviceIndex, availabilityZone, metadataOptions);
+        } else {
+            res = service.runInstances(region, imageId, instanceType, minCount, maxCount,
+                    keyName, sgIds, subnetId, clientToken, instanceTags, userData, iamInstanceProfileArn,
+                    associatePublicIp, networkInterfaceId, networkInterfaceDeviceIndex, null, metadataOptions);
+        }
 
         if (!networkInterfaceTags.isEmpty()) {
             List<String> eniIds = new ArrayList<>();
@@ -4104,6 +4149,7 @@ public class Ec2QueryHandler {
             xml.start("placement")
                     .elem("availabilityZone", inst.getPlacement().getAvailabilityZone())
                     .elem("tenancy", inst.getPlacement().getTenancy())
+                    .elem("hostId", inst.getPlacement().getHostId())
                     .end("placement");
         }
 

@@ -201,6 +201,17 @@ class Ec2DedicatedHostServiceTest {
     }
 
     @Test
+    void paginationCannotConfuseOneCommaValueWithTwoValues() {
+        DedicatedHost.Allocation allocation = new DedicatedHost.Allocation("us-east-1a", TYPE, 6, Map.of("purpose", "a, b"));
+        service.allocate(REGION, allocation, "comma-pages");
+        Map<String, List<String>> firstFilter = Map.of("tag:purpose", List.of("a, b"));
+        String token = service.describe(REGION, List.of(), firstFilter, 5, null).nextToken();
+        Map<String, List<String>> differentFilter = Map.of("tag:purpose", List.of("a", "b"));
+        assertThrows(AwsException.class, () -> service.describe(REGION, List.of(), differentFilter, 5, token),
+                "Pagination identity must preserve value boundaries, not List.toString rendering");
+    }
+
+    @Test
     void regionIsolationAppliesToReadsAndRelease() {
         String id = allocate();
         assertTrue(service.describe("eu-west-1", List.of(), Map.of(), 100, null).hosts().isEmpty(),
@@ -214,6 +225,25 @@ class Ec2DedicatedHostServiceTest {
         Map<String, List<String>> filters = Map.of("tag:purpose", List.of("builder"), "state", List.of("released"));
         assertTrue(service.describe(REGION, List.of(), filters, 100, null).hosts().isEmpty(),
                 "Every filter name must match, not just one");
+    }
+
+    @Test
+    void missingInstanceTagValueIsAnEmptyStringForIam() {
+        Instance instance = occupiedHost(allocate());
+        io.github.hectorvent.floci.services.ec2.model.Tag tag = new io.github.hectorvent.floci.services.ec2.model.Tag("purpose", null);
+        instance.setTags(List.of(tag));
+        assertEquals(Map.of("purpose", ""), service.resourceTags(REGION, instance.getInstanceId()),
+                "An omitted tag value must not break authorization context construction");
+    }
+
+    @Test
+    void aStoppedInstanceWithChangedTypeCannotRestartOnTheOldHost() {
+        String id = allocate();
+        Instance instance = occupiedHost(id);
+        instance.setState(InstanceState.stopped());
+        instance.setInstanceType("mac-m4.metal");
+        assertThrows(AwsException.class, () -> service.startInstances(REGION, List.of(instance.getInstanceId()),
+                () -> fail("A mismatched instance cannot restart")));
     }
 
     @Test

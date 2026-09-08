@@ -28,23 +28,49 @@ public class IamConditionContextResolver {
     private final Instance<DynamoDbService> dynamoDbService;
     private final RequestContext requestContext;
     private final EmulatorConfig config;
+    private final Instance<io.github.hectorvent.floci.services.ec2.Ec2DedicatedHostService> dedicatedHosts;
 
     @Inject
     public IamConditionContextResolver(Instance<DynamoDbService> dynamoDbService,
                                        RequestContext requestContext,
-                                       EmulatorConfig config) {
+                                       EmulatorConfig config,
+                                       Instance<io.github.hectorvent.floci.services.ec2.Ec2DedicatedHostService> dedicatedHosts) {
         this.dynamoDbService = dynamoDbService;
         this.requestContext = requestContext;
         this.config = config;
+        this.dedicatedHosts = dedicatedHosts;
     }
 
     public Map<String, List<String>> resolve(String credentialScope, String action,
                                              ContainerRequestContext ctx) {
         return switch (credentialScope) {
+            case "ec2" -> Map.of("aws:RequestedRegion", List.of(requestContext.getRegion() == null
+                    ? config.defaultRegion() : requestContext.getRegion()));
             case "s3" -> s3ConditionContext(action, ctx);
             case "dynamodb" -> dynamoDbConditionContext(action, ctx);
             default -> null;
         };
+    }
+
+    public Map<String, List<String>> ec2ResourceConditions(String resource,
+                                                         Map<String, List<String>> requestConditions) {
+        if ("*".equals(resource) || !dedicatedHosts.isResolvable()) {
+            return requestConditions;
+        }
+        AwsArnUtils.Arn arn = AwsArnUtils.parse(resource);
+        String account = requestContext.getAccountId() == null ? config.defaultAccountId() : requestContext.getAccountId();
+        String region = requestContext.getRegion() == null ? config.defaultRegion() : requestContext.getRegion();
+        if (!account.equals(arn.accountId()) || !region.equals(arn.region()) || !"ec2".equals(arn.service())) {
+            return requestConditions;
+        }
+        String resourceId = arn.resource().substring(arn.resource().indexOf('/') + 1);
+        Map<String, List<String>> conditions = requestConditions == null
+                ? new LinkedHashMap<>() : new LinkedHashMap<>(requestConditions);
+        dedicatedHosts.get().resourceTags(region, resourceId).forEach((key, value) -> {
+            conditions.put("ec2:ResourceTag/" + key, List.of(value));
+            conditions.put("aws:ResourceTag/" + key, List.of(value));
+        });
+        return Map.copyOf(conditions);
     }
 
     // ── S3 ──────────────────────────────────────────────────────────────────────

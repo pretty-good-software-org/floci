@@ -47,7 +47,7 @@ class IamConditionContextResolverTest {
         config = mock(EmulatorConfig.class);
         when(config.defaultRegion()).thenReturn("us-east-1");
         resolver = new IamConditionContextResolver(
-                dynamoDbServiceInstance, requestContext, config);
+                dynamoDbServiceInstance, requestContext, config, mock(Instance.class));
     }
 
     private TableDefinition fgacTable() {

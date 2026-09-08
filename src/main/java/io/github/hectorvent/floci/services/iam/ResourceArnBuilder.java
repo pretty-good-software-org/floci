@@ -49,6 +49,7 @@ public class ResourceArnBuilder {
         }
         String path = ctx.getUriInfo().getPath();
         return switch (credentialScope) {
+            case "ec2"            -> buildEc2Arns(ctx, region, accountId);
             case "s3"             -> List.of(buildS3Arn(path));
             case "lambda"         -> List.of(buildLambdaArn(path, region, accountId));
             case "sqs"            -> List.of(buildSqsArn(ctx, region, accountId));
@@ -60,6 +61,28 @@ public class ResourceArnBuilder {
             case "kms"            -> List.of(buildKmsArn(path, region, accountId));
             default               -> List.of("*");
         };
+    }
+
+    private List<String> buildEc2Arns(ContainerRequestContext context, String region, String accountId) {
+        var parameters = io.github.hectorvent.floci.core.common.Ec2AuthorizationParameters.read(context);
+        String action = parameters.getOrDefault("Action", parameters.getOrDefault("Operation", ""));
+        String prefix = switch (action) {
+            case "ReleaseHosts" -> "HostId";
+            case "TerminateInstances", "StopInstances", "StartInstances" -> "InstanceId";
+            case "CreateTags", "DeleteTags" -> "ResourceId";
+            default -> null;
+        };
+        if (prefix == null) { return List.of("*"); }
+        List<String> resources = new ArrayList<>();
+        for (int index = 1; parameters.containsKey(prefix + "." + index); index++) {
+            String id = parameters.get(prefix + "." + index);
+            String resourceType;
+            if (id.startsWith("h-")) { resourceType = "dedicated-host"; }
+            else if (id.startsWith("i-")) { resourceType = "instance"; }
+            else { return List.of("*"); }
+            resources.add(AwsArnUtils.Arn.of("ec2", region, accountId, resourceType + "/" + id).toString());
+        }
+        return resources.isEmpty() ? List.of("*") : List.copyOf(resources);
     }
 
     // ── S3 ──────────────────────────────────────────────────────────────────────

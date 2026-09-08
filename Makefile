@@ -8,7 +8,10 @@
 
 PYTHON ?= python3
 
-.PHONY: docs-sync docs-check docs-test
+.PHONY: docs-sync docs-check docs-test test-mac-hosts
+
+test-mac-hosts: ## Test Mac host lifecycle and SDK compatibility against a disposable local emulator
+	./tools/test-mac-hosts.sh
 
 docs-sync: ## Regenerate the action tables in docs/services from handler source (in place)
 	$(PYTHON) tools/docs/regen_action_docs.py

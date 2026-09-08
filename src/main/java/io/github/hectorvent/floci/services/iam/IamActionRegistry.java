@@ -110,6 +110,12 @@ public class IamActionRegistry {
      * Returns {@code null} when the action is unknown (caller treats this as ALLOW).
      */
     public String resolve(String credentialScope, ContainerRequestContext ctx) {
+        if ("ec2".equals(credentialScope)) {
+            var parameters = io.github.hectorvent.floci.core.common.Ec2AuthorizationParameters.read(ctx);
+            String action = parameters.getOrDefault("Action", parameters.get("Operation"));
+            return action == null || action.isBlank() ? null : "ec2:" + action;
+        }
+
         // Query-protocol: Action param → service:Action.
         // AWS SDKs send Query-protocol calls (IAM, STS, EC2, SQS, SNS, ...) as
         // POST with Action=... in the application/x-www-form-urlencoded body,
