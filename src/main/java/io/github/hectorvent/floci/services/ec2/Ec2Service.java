@@ -110,6 +110,7 @@ import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class Ec2Service implements ContainerTeardown, ResourceProvider {
+    static final String INSTANCE_STORE_FILE = "ec2-instances.json";
 
     private static final Logger LOG = Logger.getLogger(Ec2Service.class);
 
@@ -140,6 +141,7 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
 
     private final String accountId;
     private final jakarta.enterprise.inject.Instance<RequestContext> requestContextInstance;
+    private final Ec2DedicatedHostService dedicatedHostService;
     private final EmulatorConfig config;
     private final Ec2ContainerManager containerManager;
     private final Ec2PortForwardManager portForwardManager;
@@ -195,12 +197,22 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
                 instanceTypeCatalog, storageFactory, null);
     }
 
-    @Inject
     public Ec2Service(EmulatorConfig config, Ec2ContainerManager containerManager,
                       Ec2PortForwardManager portForwardManager,
                       AmiImageResolver amiImageResolver, Ec2ImageCatalog imageCatalog,
                       Ec2InstanceTypeCatalog instanceTypeCatalog, StorageFactory storageFactory,
                       jakarta.enterprise.inject.Instance<RequestContext> requestContextInstance) {
+        this(config, containerManager, portForwardManager, amiImageResolver, imageCatalog,
+                instanceTypeCatalog, storageFactory, requestContextInstance, null);
+    }
+
+    @Inject
+    public Ec2Service(EmulatorConfig config, Ec2ContainerManager containerManager,
+                      Ec2PortForwardManager portForwardManager,
+                      AmiImageResolver amiImageResolver, Ec2ImageCatalog imageCatalog,
+                      Ec2InstanceTypeCatalog instanceTypeCatalog, StorageFactory storageFactory,
+                      jakarta.enterprise.inject.Instance<RequestContext> requestContextInstance,
+                      Ec2DedicatedHostService dedicatedHostService) {
         this(config, containerManager, portForwardManager, amiImageResolver, imageCatalog, instanceTypeCatalog,
                 storageFactory.create("ec2", "ec2-vpcs.json", new TypeReference<Map<String, Vpc>>() {}),
                 storageFactory.create("ec2", "ec2-subnets.json", new TypeReference<Map<String, Subnet>>() {}),
@@ -210,7 +222,7 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
                 storageFactory.create("ec2", "ec2-route-tables.json", new TypeReference<Map<String, RouteTable>>() {}),
                 storageFactory.create("ec2", "ec2-key-pairs.json", new TypeReference<Map<String, KeyPair>>() {}),
                 storageFactory.create("ec2", "ec2-addresses.json", new TypeReference<Map<String, Address>>() {}),
-                storageFactory.create("ec2", "ec2-instances.json", new TypeReference<Map<String, Instance>>() {}),
+                storageFactory.create("ec2", INSTANCE_STORE_FILE, new TypeReference<Map<String, Instance>>() {}),
                 storageFactory.create("ec2", "ec2-volumes.json", new TypeReference<Map<String, Volume>>() {}),
                 storageFactory.create("ec2", "ec2-registered-images.json", new TypeReference<Map<String, Image>>() {}),
                 storageFactory.create("ec2", "ec2-snapshots.json", new TypeReference<Map<String, Snapshot>>() {}),
@@ -236,7 +248,7 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
                         new TypeReference<Map<String, NetworkInterface>>() {}),
                 storageFactory.create("ec2", "ec2-capacity-reservations.json",
                         new TypeReference<Map<String, CapacityReservation>>() {}),
-                requestContextInstance);
+                requestContextInstance, dedicatedHostService);
     }
 
     // Package-private for hermetic tests (pass in-memory or temp-dir-backed StorageBackends directly).
@@ -346,6 +358,49 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
                StorageBackend<String, NetworkInterface> networkInterfaces,
                StorageBackend<String, CapacityReservation> capacityReservations,
                jakarta.enterprise.inject.Instance<RequestContext> requestContextInstance) {
+        this(config, containerManager, portForwardManager, amiImageResolver, imageCatalog, instanceTypeCatalog,
+                vpcs, subnets, securityGroups, securityGroupRules, internetGateways, routeTables, keyPairs,
+                addresses, instances, volumes, registeredImages, snapshots, launchTemplates, vpcEndpoints,
+                natGateways, spotInstanceRequests, networkAcls, managedPrefixLists, tags,
+                transitGateways, transitGatewayRouteTables, transitGatewayVpcAttachments,
+                transitGatewayPropagations, transitGatewayRoutes, vpcPeeringConnections,
+                networkInterfaces, capacityReservations, requestContextInstance, null);
+    }
+
+    private Ec2Service(EmulatorConfig config, Ec2ContainerManager containerManager,
+               Ec2PortForwardManager portForwardManager,
+               AmiImageResolver amiImageResolver, Ec2ImageCatalog imageCatalog,
+               Ec2InstanceTypeCatalog instanceTypeCatalog,
+               StorageBackend<String, Vpc> vpcs,
+               StorageBackend<String, Subnet> subnets,
+               StorageBackend<String, SecurityGroup> securityGroups,
+               StorageBackend<String, SecurityGroupRule> securityGroupRules,
+               StorageBackend<String, InternetGateway> internetGateways,
+               StorageBackend<String, RouteTable> routeTables,
+               StorageBackend<String, KeyPair> keyPairs,
+               StorageBackend<String, Address> addresses,
+               StorageBackend<String, Instance> instances,
+               StorageBackend<String, Volume> volumes,
+               StorageBackend<String, Image> registeredImages,
+               StorageBackend<String, Snapshot> snapshots,
+               StorageBackend<String, LaunchTemplate> launchTemplates,
+               StorageBackend<String, VpcEndpoint> vpcEndpoints,
+               StorageBackend<String, NatGateway> natGateways,
+               StorageBackend<String, SpotInstanceRequest> spotInstanceRequests,
+               StorageBackend<String, NetworkAcl> networkAcls,
+               StorageBackend<String, ManagedPrefixList> managedPrefixLists,
+               StorageBackend<String, List<Tag>> tags,
+               StorageBackend<String, TransitGateway> transitGateways,
+               StorageBackend<String, TransitGatewayRouteTable> transitGatewayRouteTables,
+               StorageBackend<String, TransitGatewayVpcAttachment> transitGatewayVpcAttachments,
+               StorageBackend<String, TransitGatewayRouteTablePropagation> transitGatewayPropagations,
+               StorageBackend<String, TransitGatewayRoute> transitGatewayRoutes,
+               StorageBackend<String, VpcPeeringConnection> vpcPeeringConnections,
+               StorageBackend<String, NetworkInterface> networkInterfaces,
+               StorageBackend<String, CapacityReservation> capacityReservations,
+               jakarta.enterprise.inject.Instance<RequestContext> requestContextInstance,
+               Ec2DedicatedHostService dedicatedHostService) {
+        this.dedicatedHostService = dedicatedHostService;
         this.accountId = config.defaultAccountId();
         this.requestContextInstance = requestContextInstance;
         this.config = config;
@@ -2287,6 +2342,51 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
                                     Boolean associatePublicIp, String networkInterfaceId,
                                     int networkInterfaceDeviceIndex, String availabilityZone,
                                     LaunchTemplateData.MetadataOptions metadataOptions) {
+        Placement placement = new Placement(availabilityZone);
+        return createInstances(region, imageId, instanceType, minCount, maxCount, keyName, securityGroupIds,
+                subnetId, clientToken, instanceTags, userData, iamInstanceProfileArn, associatePublicIp,
+                networkInterfaceId, networkInterfaceDeviceIndex, placement, metadataOptions);
+    }
+
+    public Reservation runInstancesOnHost(String region, String hostId, String imageId, String instanceType,
+                                    int minCount, int maxCount, String keyName, List<String> securityGroupIds,
+                                    String subnetId, String clientToken, List<Tag> instanceTags, String userData,
+                                    String iamInstanceProfileArn, Boolean associatePublicIp, String networkInterfaceId,
+                                    int networkInterfaceDeviceIndex, String availabilityZone,
+                                    LaunchTemplateData.MetadataOptions metadataOptions) {
+        if (!config.services().ec2().mock()) {
+            throw new AwsException("UnsupportedOperation", "RunInstances: Mac hosts require EC2 mock mode; Docker cannot run macOS", 400);
+        }
+        if (minCount != 1 || maxCount != 1) {
+            throw new AwsException("UnsupportedOperation", "RunInstances: Mac host placement supports one instance per request", 400);
+        }
+        return dedicatedHosts().launch(region, hostId, instanceType, host -> {
+            if (availabilityZone != null && !availabilityZone.equals(host.allocation().availabilityZone())) {
+                throw new AwsException("InvalidParameterCombination", "RunInstances: placement zone differs from host zone", 400);
+            }
+            Placement placement = new Placement(host.allocation().availabilityZone());
+            placement.setHostId(host.hostId());
+            placement.setTenancy("host");
+            return createInstances(region, imageId, instanceType, minCount, maxCount, keyName, securityGroupIds,
+                    subnetId, clientToken, instanceTags, userData, iamInstanceProfileArn, associatePublicIp,
+                    networkInterfaceId, networkInterfaceDeviceIndex, placement, metadataOptions);
+        });
+    }
+
+    private Ec2DedicatedHostService dedicatedHosts() {
+        if (dedicatedHostService == null) {
+            throw new AwsException("UnsupportedOperation", "Dedicated host operation: host service is unavailable", 400);
+        }
+        return dedicatedHostService;
+    }
+
+    private Reservation createInstances(String region, String imageId, String instanceType,
+                                    int minCount, int maxCount, String keyName, List<String> securityGroupIds,
+                                    String subnetId, String clientToken, List<Tag> instanceTags, String userData,
+                                    String iamInstanceProfileArn, Boolean associatePublicIp, String networkInterfaceId,
+                                    int networkInterfaceDeviceIndex, Placement requestedPlacement,
+                                    LaunchTemplateData.MetadataOptions metadataOptions) {
+        String availabilityZone = requestedPlacement.getAvailabilityZone();
         if (imageId == null || imageId.isBlank()) {
             throw new AwsException("MissingParameter", "The request must contain the parameter ImageId", 400);
         }
@@ -2378,7 +2478,10 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
             inst.setImageId(imageId);
             inst.setState(InstanceState.pending());
             inst.setInstanceType(effectiveInstanceType);
-            inst.setPlacement(new Placement(az));
+            Placement placement = new Placement(az);
+            placement.setTenancy(requestedPlacement.getTenancy());
+            placement.setHostId(requestedPlacement.getHostId());
+            inst.setPlacement(placement);
             inst.setSubnetId(finalSubnetId);
             inst.setVpcId(vpcId);
             // AWS precedence (#1984): the launch-time AssociatePublicIpAddress
@@ -2686,7 +2789,19 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
         return new ArrayList<>(reservationMap.values());
     }
 
+    private boolean hasHostAssignments(String region, List<String> instanceIds) {
+        return instanceIds.stream().flatMap(id -> instances.get(key(region, id)).stream())
+                .anyMatch(i -> Ec2DedicatedHostService.instanceHostId(i) != null);
+    }
+
     public List<Map<String, String>> terminateInstances(String region, List<String> instanceIds) {
+        if (hasHostAssignments(region, instanceIds)) {
+            return dedicatedHosts().endOccupancy(region, instanceIds, () -> terminateInstanceRecords(region, instanceIds));
+        }
+        return terminateInstanceRecords(region, instanceIds);
+    }
+
+    private List<Map<String, String>> terminateInstanceRecords(String region, List<String> instanceIds) {
         ensureDefaultResources(region);
         List<Map<String, String>> result = new ArrayList<>();
         for (String id : instanceIds) {
@@ -2748,6 +2863,13 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
     }
 
     public List<Map<String, String>> stopInstances(String region, List<String> instanceIds) {
+        if (hasHostAssignments(region, instanceIds)) {
+            return dedicatedHosts().endOccupancy(region, instanceIds, () -> stopInstanceRecords(region, instanceIds));
+        }
+        return stopInstanceRecords(region, instanceIds);
+    }
+
+    private List<Map<String, String>> stopInstanceRecords(String region, List<String> instanceIds) {
         ensureDefaultResources(region);
         List<Map<String, String>> result = new ArrayList<>();
         for (String id : instanceIds) {
@@ -2775,6 +2897,13 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
     }
 
     public List<Map<String, String>> startInstances(String region, List<String> instanceIds) {
+        if (hasHostAssignments(region, instanceIds)) {
+            return dedicatedHosts().startInstances(region, instanceIds, () -> startInstanceRecords(region, instanceIds));
+        }
+        return startInstanceRecords(region, instanceIds);
+    }
+
+    private List<Map<String, String>> startInstanceRecords(String region, List<String> instanceIds) {
         ensureDefaultResources(region);
         List<Map<String, String>> result = new ArrayList<>();
         for (String id : instanceIds) {
@@ -4762,6 +4891,10 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
     public void createTags(String region, List<String> resourceIds, List<Tag> tagList) {
         ensureDefaultResources(region);
         for (String resourceId : resourceIds) {
+            if (resourceId.startsWith("h-")) {
+                dedicatedHosts().addTags(region, resourceId, tagList);
+                continue;
+            }
             withTopologyLockIfNeeded(region, resourceId, () -> {
                 synchronized (lockFor(key(region, resourceId))) {
                     List<Tag> existing = new ArrayList<>(tags.get(resourceId).orElse(List.of()));
@@ -4796,6 +4929,10 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
     public void deleteTags(String region, List<String> resourceIds, List<Tag> tagList) {
         ensureDefaultResources(region);
         for (String resourceId : resourceIds) {
+            if (resourceId.startsWith("h-")) {
+                dedicatedHosts().removeTags(region, resourceId, tagList);
+                continue;
+            }
             withTopologyLockIfNeeded(region, resourceId, () -> {
             synchronized (lockFor(key(region, resourceId))) {
                 List<Tag> stored = tags.get(resourceId).orElse(null);
@@ -4879,8 +5016,16 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
         List<String> filterKeys          = filters != null ? filters.get("key")            : null;
         List<String> filterValues        = filters != null ? filters.get("value")          : null;
 
+        Map<String, List<Tag>> resourceTags = new LinkedHashMap<>();
+        for (String id : tags.keys()) { resourceTags.put(id, tags.get(id).orElse(List.of())); }
+        // Legacy in-memory fixtures omit host integration; CDI always supplies it.
+        if (dedicatedHostService != null) {
+            dedicatedHostService.taggedHosts(region).forEach((id, values) -> resourceTags.put(id,
+                    values.entrySet().stream().map(tag -> new Tag(tag.getKey(), tag.getValue())).toList()));
+        }
         List<Map<String, String>> result = new ArrayList<>();
-        for (String resourceId : new ArrayList<>(tags.keys())) {
+        for (var resource : resourceTags.entrySet()) {
+            String resourceId = resource.getKey();
             String resourceType = inferResourceType(resourceId);
 
             if (filterResourceIds != null && !filterResourceIds.contains(resourceId)) {
@@ -4889,7 +5034,7 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
             if (filterResourceTypes != null && !filterResourceTypes.contains(resourceType)) {
                 continue;
             }
-            for (Tag tag : tags.get(resourceId).orElse(List.of())) {
+            for (Tag tag : resource.getValue()) {
                 if (filterKeys != null && !filterKeys.contains(tag.getKey())) {
                     continue;
                 }
@@ -4908,6 +5053,7 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
     }
 
     private String inferResourceType(String resourceId) {
+        if (resourceId.startsWith("h-")) { return "dedicated-host"; }
         if (resourceId.startsWith("i-")) {
             return "instance";
         }

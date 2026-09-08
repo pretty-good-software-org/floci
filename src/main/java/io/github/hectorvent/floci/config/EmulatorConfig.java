@@ -2147,6 +2147,10 @@ public interface EmulatorConfig {
         @WithDefault("true")
         boolean enabled();
 
+        /** Simulated Mac host pending interval, not a prediction of physical AWS scrubbing time. */
+        @WithDefault("1s")
+        java.time.Duration dedicatedHostScrubDuration();
+
         /**
          * When true, DescribeInstances and IMDS report each instance's CFN- and
          * subnet-allocated private IP (AWS-faithful) instead of the Docker

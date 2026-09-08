@@ -188,7 +188,11 @@ public class IamEnforcementFilter implements ContainerRequestFilter {
         }
 
         for (String resource : resources) {
-            Decision decision = evaluator.evaluate(caller, null, action, resource, conditionContext);
+            Map<String, List<String>> resourceConditions = conditionContext;
+            if ("ec2".equals(credentialScope)) {
+                resourceConditions = conditionContextResolver.ec2ResourceConditions(resource, conditionContext);
+            }
+            Decision decision = evaluator.evaluate(caller, null, action, resource, resourceConditions);
             if (decision == Decision.DENY) {
                 LOG.infov("IAM enforcement DENY: akid={0} action={1} resource={2}", akid, action, resource);
                 String denyMessage = "User: arn:aws:iam::" + accountId

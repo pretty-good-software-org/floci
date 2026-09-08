@@ -142,6 +142,7 @@ public class AwsQueryController {
     );
 
     private static final Set<String> EC2_ACTIONS = Set.of(
+            "AllocateHosts", "DescribeHosts", "ReleaseHosts",
             "RunInstances", "CreateFleet", "DescribeInstances", "TerminateInstances", "StartInstances", "StopInstances",
             "RebootInstances", "DescribeInstanceStatus", "DescribeInstanceAttribute", "ModifyInstanceAttribute",
             "CreateVpc", "DescribeVpcs", "DeleteVpc", "ModifyVpcAttribute", "DescribeVpcAttribute",

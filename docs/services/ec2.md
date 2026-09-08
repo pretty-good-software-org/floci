@@ -2,6 +2,53 @@
 
 **Protocol:** EC2 Query (XML) — `POST http://localhost:4566/` with `Action=` parameter
 
+## Mac Dedicated Hosts
+
+This is a bounded control-plane simulation, not a macOS runtime or a billing emulator.
+`AllocateHosts`, `DescribeHosts` and `ReleaseHosts` support Mac instance types with explicit host placement.
+A host has one instance slot. Host records, original allocation inputs, tags and release state use the existing
+account-scoped StorageFactory backends and survive persistent, hybrid and WAL restarts.
+
+| Action | Supported behavior |
+| --- | --- |
+| AllocateHosts | Mac InstanceType, AvailabilityZone name, Quantity from 1 to 100, dedicated-host tags and ClientToken idempotency. Retries preserve IDs and allocation time; parameter changes are rejected. |
+| DescribeHosts | Host IDs, pagination, state/availability-zone/instance-type/host-id/tag-key/tag-value filters, ownership, timestamps and current occupancy. Host IDs cannot be combined with MaxResults. |
+| ReleaseHosts | Per-host success/failure results, minimum 24-hour allocation, occupancy and pending-state checks. Released records remain describable until emulator reset. |
+
+`RunInstances` accepts `Placement.HostId`, host tenancy and an optional matching availability-zone name, directly
+or through a launch template. Host placement requires **EC2 mock mode** and a single-instance request. It does not
+boot a Mac AMI, execute macOS or validate real Mac hardware. Other placement options fail explicitly. Instance stop,
+termination and restart coordinate with host release. Concurrent launches cannot claim the same host slot.
+
+Stopping or terminating the instance moves its host into a simulated pending/scrubbing interval. Configure that
+interval with `FLOCI_SERVICES_EC2_DEDICATED_HOST_SCRUB_DURATION`; the default is `1s` for local testing. Lease time uses
+the shared clock and is not extended by runner activity, tags or allocation retries. Tests inject a clock instead of
+adding a public time-travel endpoint. Real AWS Apple Silicon scrubbing can take up to 4.5 hours, and AWS pauses compute
+billing while scrubbing. This simulator neither measures nor predicts AWS charges.
+
+Unsupported features include non-Mac hosts, instance-family pooling, auto-placement, host recovery/maintenance,
+Outposts, CPU options and availability-zone IDs. Physical CPU/socket metadata is not synthesized. The allocation
+batch limit is an emulator limit, not a statement of AWS quotas. Lease/state failures use generic EC2 error results;
+only the documented occupied-host error is asserted as an exact AWS example. Full AWS error-code parity is not claimed.
+
+Host tags work with `CreateTags`, `DeleteTags` and `DescribeTags`. When IAM enforcement is enabled, EC2 host release
+and instance lifecycle requests resolve each target resource ARN independently and evaluate its resource-tag conditions.
+The IAM tests use registered non-root identities. The emulator's existing root/test-key bypasses still apply; these
+tests do not prove real AWS authorization or SigV4 correctness. AMI boot behavior, full EBS semantics, real capacity,
+physical scrubbing and actual billing still require separate verification.
+
+With JDK 25 selected, run `make test-mac-hosts`. It runs the affected EC2/IAM tests, builds the application, and runs
+Java AWS SDK compatibility tests against a disposable loopback emulator with fake credentials and no Docker access.
+The command shuts down its JVM and removes its state on success or failure. Do not run the dedicated-host SDK tests
+against a shared persistent emulator: host records retain their lease until that emulator's state is discarded.
+
+References:
+
+- [AllocateHosts](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_AllocateHosts.html)
+- [DescribeHosts](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeHosts.html)
+- [ReleaseHosts](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_ReleaseHosts.html)
+- [Mac stop, scrubbing and billing](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/mac-instance-stop.html)
+
 ## Instance Execution Model
 
 `RunInstances` launches a **real Docker container** for each instance. By default, the container is kept alive with `tail -f /dev/null` so any base image works regardless of its default CMD. Catalog entries that opt into the `systemd` guest runtime start `/sbin/init` instead, with the Docker mounts needed for a systemd-based cloud-image guest.

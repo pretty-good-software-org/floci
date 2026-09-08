@@ -67,6 +67,30 @@ import static org.mockito.Mockito.when;
 
 class Ec2ServiceTest {
 
+    private Ec2Service serviceWithoutDedicatedHosts() {
+        return new Ec2Service(mockConfig(true), mock(Ec2ContainerManager.class),
+                mock(Ec2PortForwardManager.class), mock(AmiImageResolver.class), mock(Ec2ImageCatalog.class),
+                new Ec2InstanceTypeCatalog(), new InMemoryStorageFactory());
+    }
+
+    @Test
+    void creatingHostTagsWithoutHostSupportReturnsAModelledError() {
+        Ec2Service service = serviceWithoutDedicatedHosts();
+        List<String> ids = List.of("h-0123456789abcdef0");
+        List<Tag> tags = List.of(new Tag("purpose", "test"));
+        AwsException error = assertThrows(AwsException.class, () -> service.createTags("us-east-1", ids, tags));
+        assertEquals("UnsupportedOperation", error.getErrorCode(), "Missing host support must not throw NPE");
+    }
+
+    @Test
+    void deletingHostTagsWithoutHostSupportReturnsAModelledError() {
+        Ec2Service service = serviceWithoutDedicatedHosts();
+        List<String> ids = List.of("h-0123456789abcdef0");
+        List<Tag> tags = List.of(new Tag("purpose", null));
+        AwsException error = assertThrows(AwsException.class, () -> service.deleteTags("us-east-1", ids, tags));
+        assertEquals("UnsupportedOperation", error.getErrorCode(), "Missing host support must not throw NPE");
+    }
+
     @Test
     void mockModeTreatsExistingNonTerminatedInstanceAsRunningContainer() {
         Ec2ContainerManager containerManager = mock(Ec2ContainerManager.class);
