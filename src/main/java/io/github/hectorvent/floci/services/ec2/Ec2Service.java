@@ -2374,8 +2374,10 @@ public class Ec2Service implements ContainerTeardown, ResourceProvider {
     }
 
     private Ec2DedicatedHostService dedicatedHosts() {
-        return java.util.Objects.requireNonNull(dedicatedHostService,
-                "Dedicated host operation requires the constructor-injected host service");
+        if (dedicatedHostService == null) {
+            throw new AwsException("UnsupportedOperation", "Dedicated host operation: host service is unavailable", 400);
+        }
+        return dedicatedHostService;
     }
 
     private Reservation createInstances(String region, String imageId, String instanceType,

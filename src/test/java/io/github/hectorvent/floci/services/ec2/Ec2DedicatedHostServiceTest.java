@@ -228,6 +228,14 @@ class Ec2DedicatedHostServiceTest {
     }
 
     @Test
+    void nullRestoredInstanceTagsProduceAnEmptyIamContext() {
+        Instance instance = occupiedHost(allocate());
+        instance.setTags(null);
+        assertEquals(Map.of(), service.resourceTags(REGION, instance.getInstanceId()),
+                "Nullable restored tags must not break IAM context resolution");
+    }
+
+    @Test
     void missingInstanceTagValueIsAnEmptyStringForIam() {
         Instance instance = occupiedHost(allocate());
         io.github.hectorvent.floci.services.ec2.model.Tag tag = new io.github.hectorvent.floci.services.ec2.model.Tag("purpose", null);

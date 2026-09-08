@@ -339,6 +339,7 @@ public class Ec2DedicatedHostService {
     }
 
     private Map<String, String> tagValues(List<Tag> tags) {
+        if (tags == null) { return Map.of(); }
         Map<String, String> values = new LinkedHashMap<>();
         for (Tag tag : tags) { values.put(tag.getKey(), tag.getValue() == null ? "" : tag.getValue()); }
         return Map.copyOf(values);

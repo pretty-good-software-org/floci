@@ -17,7 +17,10 @@ cleanup() {
   local status=$?
   trap - EXIT
   if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
-    kill -TERM "$server_pid"
+    if ! kill -TERM "$server_pid" 2>/dev/null && kill -0 "$server_pid" 2>/dev/null; then
+      printf '%s\n' 'Stop test emulator: failed to signal live process' >&2
+      status=1
+    fi
     local server_status=0
     wait "$server_pid" || server_status=$?
     # SIGTERM is the expected shutdown signal for the owned JVM.

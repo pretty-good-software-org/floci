@@ -88,6 +88,7 @@ class Ec2DedicatedHostIntegrationTest {
         request("TerminateInstances", Map.of("InstanceId.1", instanceId)).then().statusCode(200);
         request("DescribeHosts", Map.of("HostId.1", hostId)).then().statusCode(200)
                 .body("DescribeHostsResponse.hostSet.item.state", equalTo("pending"))
+                .body("DescribeHostsResponse.hostSet.item.hostId", equalTo(hostId))
                 .body("DescribeHostsResponse.hostSet.item.instances.item.size()", equalTo(0));
         when(clock.instant()).thenReturn(START.plus(Duration.ofHours(24)).plusSeconds(1));
         request("ReleaseHosts", Map.of("HostId.1", hostId)).then().statusCode(200)
@@ -113,6 +114,7 @@ class Ec2DedicatedHostIntegrationTest {
         requestAs("222222222222", "DescribeHosts", Map.of("HostId.1", hostId)).then().statusCode(400);
         when(clock.instant()).thenReturn(START.plus(Duration.ofHours(24)));
         requestAs("222222222222", "ReleaseHosts", Map.of("HostId.1", hostId)).then().statusCode(200)
+                .body("ReleaseHostsResponse.unsuccessful.item.resourceId", equalTo(hostId))
                 .body("ReleaseHostsResponse.successful.item.size()", equalTo(0));
         request("DescribeHosts", Map.of("HostId.1", hostId)).then().statusCode(200)
                 .body("DescribeHostsResponse.hostSet.item.state", equalTo("available"));
@@ -145,6 +147,7 @@ class Ec2DedicatedHostIntegrationTest {
                 .body("DescribeTagsResponse.tagSet.item.value", equalTo("builder"));
         request("DeleteTags", Map.of("ResourceId.1", hostId, "Tag.1.Key", "purpose")).then().statusCode(200);
         request("DescribeHosts", Map.of("HostId.1", hostId)).then().statusCode(200)
+                .body("DescribeHostsResponse.hostSet.item.hostId", equalTo(hostId))
                 .body("DescribeHostsResponse.hostSet.item.tagSet.item.size()", equalTo(0));
     }
 
