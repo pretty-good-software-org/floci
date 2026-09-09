@@ -50,6 +50,7 @@ public class ResourceArnBuilder {
         String path = ctx.getUriInfo().getPath();
         return switch (credentialScope) {
             case "ec2"            -> buildEc2Arns(ctx, region, accountId);
+            case "sts"            -> List.of(buildStsArn(ctx));
             case "s3"             -> List.of(buildS3Arn(path));
             case "lambda"         -> List.of(buildLambdaArn(path, region, accountId));
             case "sqs"            -> List.of(buildSqsArn(ctx, region, accountId));
@@ -63,9 +64,21 @@ public class ResourceArnBuilder {
         };
     }
 
+    private String buildStsArn(ContainerRequestContext context) {
+        var parameters = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.read(context);
+        String action = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.action(parameters);
+        if (!"AssumeRole".equals(action)) { return "*"; }
+        String roleArn = parameters.get("RoleArn");
+        return roleArn == null || roleArn.isBlank() ? "*" : roleArn;
+    }
+
     private List<String> buildEc2Arns(ContainerRequestContext context, String region, String accountId) {
-        var parameters = io.github.hectorvent.floci.core.common.Ec2AuthorizationParameters.read(context);
-        String action = parameters.getOrDefault("Action", parameters.getOrDefault("Operation", ""));
+        var parameters = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.read(context);
+        String action = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.action(parameters);
+        if ("AllocateHosts".equals(action)) {
+            // AWS authorizes creation against dedicated-host ARNs before an ID exists.
+            return List.of(AwsArnUtils.Arn.of("ec2", region, accountId, "dedicated-host/*").toString());
+        }
         String prefix = switch (action) {
             case "ReleaseHosts" -> "HostId";
             case "TerminateInstances", "StopInstances", "StartInstances" -> "InstanceId";

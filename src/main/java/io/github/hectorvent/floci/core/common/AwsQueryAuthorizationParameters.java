@@ -8,11 +8,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Uses the same parameter source as the EC2 GET/POST controller, including duplicate-key precedence. */
-public final class Ec2AuthorizationParameters {
-    private static final String CACHE_KEY = "floci.ec2AuthorizationParameters";
+/** Preserves first-value semantics for AWS Query POST handlers and the EC2 GET handler. */
+public final class AwsQueryAuthorizationParameters {
+    private static final String CACHE_KEY = "floci.awsQueryAuthorizationParameters";
 
-    private Ec2AuthorizationParameters() {}
+    private AwsQueryAuthorizationParameters() {}
+
+    public static String action(Map<String, String> parameters) {
+        return parameters.getOrDefault("Action", parameters.getOrDefault("Operation", ""));
+    }
 
     public static Map<String, String> read(ContainerRequestContext context) {
         Object cached = context.getProperty(CACHE_KEY);
@@ -27,7 +31,7 @@ public final class Ec2AuthorizationParameters {
             try {
                 body = context.getEntityStream().readAllBytes();
             } catch (IOException error) {
-                throw new AwsException("InvalidParameterValue", "Authorize EC2 request: cannot read form body", 400);
+                throw new AwsException("InvalidParameterValue", "Authorize AWS query request: cannot read form body", 400);
             }
             context.setEntityStream(new ByteArrayInputStream(body));
             for (String pair : new String(body, StandardCharsets.UTF_8).split("&")) {
@@ -38,7 +42,7 @@ public final class Ec2AuthorizationParameters {
                     String value = parts.length == 2 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8) : "";
                     values.putIfAbsent(key, value);
                 } catch (IllegalArgumentException error) {
-                    throw new AwsException("InvalidParameterValue", "Authorize EC2 request: malformed form encoding", 400);
+                    throw new AwsException("InvalidParameterValue", "Authorize AWS query request: malformed form encoding", 400);
                 }
             }
         }

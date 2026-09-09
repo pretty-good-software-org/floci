@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 for name in $(compgen -v AWS_); do unset "$name"; done
 export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_EC2_METADATA_DISABLED=true
 
-affected_tests='Ec2*Test,ContainerNetworkReachabilityTest,FlowLogServiceTest,Ipv4CidrsTest,IamActionRegistryTest,ResourceArnBuilderTest,IamConditionContextResolverTest,IamEnforcementFilterTest,IamEnforcementFilterUnitTest'
+affected_tests='Ec2*Test,ContainerNetworkReachabilityTest,FlowLogServiceTest,Ipv4CidrsTest,IamActionRegistryTest,ResourceArnBuilderTest,AwsQueryResourceArnBuilderTest,Sts*Test,AssumeRole*Test,IamConditionContextResolverTest,IamEnforcementFilterTest,IamEnforcementFilterUnitTest'
 ./mvnw package "-Dtest=${affected_tests}" -Dfloci.services.ec2.mock=true
 
 workspace="$(mktemp -d)"

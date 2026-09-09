@@ -4,6 +4,8 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map;
 import java.util.UUID;
@@ -42,14 +44,118 @@ class AssumeRoleTrustPolicyIntegrationTest {
     }
 
     private static void createRoleInB(String roleName) {
+        createTrustedRoleInB(roleName, TRUST_ALLOW_A);
+    }
+
+    private static void createTrustedRoleInB(String roleName, String trustPolicy) {
         given()
             .contentType("application/x-www-form-urlencoded")
             .formParam("Action", "CreateRole")
             .formParam("RoleName", roleName)
-            .formParam("AssumeRolePolicyDocument", TRUST_ALLOW_A)
+            .formParam("AssumeRolePolicyDocument", trustPolicy)
             .header("Authorization", auth(ACCOUNT_B, "iam"))
         .when().post("/")
         .then().statusCode(200);
+    }
+
+    private record ScopedIdentity(String key, String arn) {}
+
+    private static ScopedIdentity scopedUser(String roleArn) {
+        String user = "scoped-" + UUID.randomUUID().toString().substring(0, 8);
+        given().header("Authorization", auth(ACCOUNT_A, "iam"))
+                .formParam("Action", "CreateUser").formParam("UserName", user)
+                .when().post("/").then().statusCode(200);
+        String policy = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\","
+                + "\"Action\":\"sts:AssumeRole\",\"Resource\":\"" + roleArn + "\"}]}";
+        given().header("Authorization", auth(ACCOUNT_A, "iam"))
+                .formParam("Action", "PutUserPolicy").formParam("UserName", user)
+                .formParam("PolicyName", "one-role").formParam("PolicyDocument", policy)
+                .when().post("/").then().statusCode(200);
+        String key = given().header("Authorization", auth(ACCOUNT_A, "iam"))
+                .formParam("Action", "CreateAccessKey").formParam("UserName", user)
+                .when().post("/").then().statusCode(200).extract()
+                .path("CreateAccessKeyResponse.CreateAccessKeyResult.AccessKey.AccessKeyId");
+        return new ScopedIdentity(key, "arn:aws:iam::" + ACCOUNT_A + ":user/" + user);
+    }
+
+    private static void trustIdentity(String role, ScopedIdentity identity) {
+        String trust = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\","
+                + "\"Principal\":{\"AWS\":\"" + identity.arn() + "\"},\"Action\":\"sts:AssumeRole\"}]}";
+        createTrustedRoleInB(role, trust);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Action", "Operation"})
+    void exactRoleIdentityGrantAllowsItsTrustedTarget(String actionParameter) {
+        String role = "scoped-ok-" + UUID.randomUUID().toString().substring(0, 8);
+        String roleArn = "arn:aws:iam::" + ACCOUNT_B + ":role/" + role;
+        ScopedIdentity identity = scopedUser(roleArn);
+        trustIdentity(role, identity);
+        given().header("Authorization", auth(identity.key(), "sts"))
+                .formParam(actionParameter, "AssumeRole").formParam("RoleArn", roleArn)
+                .formParam("RoleSessionName", "scoped")
+                .when().post("/").then().statusCode(200)
+                .body("AssumeRoleResponse.AssumeRoleResult.Credentials.AccessKeyId", startsWith("ASIA"));
+    }
+
+    @Test
+    void exactRoleIdentityGrantDeniesAnotherRoleEvenWhenTrustAllowsTheCaller() {
+        String role = "scoped-deny-" + UUID.randomUUID().toString().substring(0, 8);
+        ScopedIdentity identity = scopedUser("arn:aws:iam::" + ACCOUNT_B + ":role/some-other-role");
+        trustIdentity(role, identity);
+        given().header("Authorization", auth(identity.key(), "sts"))
+                .formParam("Action", "AssumeRole").formParam("RoleArn", "arn:aws:iam::" + ACCOUNT_B + ":role/" + role)
+                .formParam("RoleSessionName", "scoped")
+                .when().post("/").then().statusCode(403).body(containsString("AccessDenied"));
+    }
+
+    @Test
+    void queryIdentityActionCannotHideAnAssumeRoleBody() {
+        String role = "query-shadow-" + UUID.randomUUID().toString().substring(0, 8);
+        ScopedIdentity identity = scopedUser("arn:aws:iam::" + ACCOUNT_B + ":role/some-other-role");
+        trustIdentity(role, identity);
+        given().header("Authorization", auth(identity.key(), "sts"))
+                .queryParam("Action", "GetCallerIdentity")
+                .formParam("Action", "AssumeRole").formParam("RoleArn", "arn:aws:iam::" + ACCOUNT_B + ":role/" + role)
+                .formParam("RoleSessionName", "shadow")
+                .when().post("/").then().statusCode(403).body(containsString("AccessDenied"));
+    }
+
+    @Test
+    void operationAliasCannotBypassTheIdentityPolicy() {
+        String role = "operation-alias-" + UUID.randomUUID().toString().substring(0, 8);
+        String roleArn = "arn:aws:iam::" + ACCOUNT_B + ":role/" + role;
+        ScopedIdentity identity = scopedUser("arn:aws:iam::" + ACCOUNT_B + ":role/some-other-role");
+        trustIdentity(role, identity);
+        given().header("Authorization", auth(identity.key(), "sts"))
+                .formParam("Operation", "AssumeRole").formParam("RoleArn", roleArn)
+                .formParam("RoleSessionName", "alias")
+                .when().post("/").then().statusCode(403).body(containsString("AccessDenied"));
+    }
+
+    @Test
+    void registeredUserCanAssumeRoleThroughItsAccountDelegation() {
+        String role = "account-delegation-" + UUID.randomUUID().toString().substring(0, 8);
+        createRoleInB(role);
+        String roleArn = "arn:aws:iam::" + ACCOUNT_B + ":role/" + role;
+        ScopedIdentity identity = scopedUser(roleArn);
+        given().header("Authorization", auth(identity.key(), "sts"))
+                .formParam("Action", "AssumeRole").formParam("RoleArn", roleArn)
+                .formParam("RoleSessionName", "delegation")
+                .when().post("/").then().statusCode(200);
+    }
+
+    @Test
+    void registeredUserDoesNotInheritTheDefaultAccountsDelegation() {
+        String role = "wrong-delegation-" + UUID.randomUUID().toString().substring(0, 8);
+        String trust = TRUST_ALLOW_A.replace(ACCOUNT_A, "000000000000");
+        createTrustedRoleInB(role, trust);
+        String roleArn = "arn:aws:iam::" + ACCOUNT_B + ":role/" + role;
+        ScopedIdentity identity = scopedUser(roleArn);
+        given().header("Authorization", auth(identity.key(), "sts"))
+                .formParam("Action", "AssumeRole").formParam("RoleArn", roleArn)
+                .formParam("RoleSessionName", "delegation")
+                .when().post("/").then().statusCode(403).body(containsString("AccessDenied"));
     }
 
     @Test

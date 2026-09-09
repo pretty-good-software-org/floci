@@ -151,10 +151,11 @@ public class StsQueryHandler {
             return null;
         }
         String auth = headers == null ? null : headers.getHeaderString("Authorization");
-        String callerAccount = accountResolver.resolve(auth);
+        String fallbackAccount = accountResolver.resolve(auth);
         String callerArn = iamService.resolveCallerArn(
                         auth == null ? null : accountResolver.extractAccessKeyId(auth))
-                .orElse(AwsArnUtils.Arn.of("iam", "", callerAccount, "root").toString());
+                .orElse(AwsArnUtils.Arn.of("iam", "", fallbackAccount, "root").toString());
+        String callerAccount = AwsArnUtils.accountOrDefault(callerArn, fallbackAccount);
         if (trustPolicyEvaluator.allows(role.get().getAssumeRolePolicyDocument(), callerArn, callerAccount)) {
             return null;
         }

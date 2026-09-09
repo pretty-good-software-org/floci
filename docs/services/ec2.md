@@ -33,6 +33,8 @@ only the documented occupied-host error is asserted as an exact AWS example. Ful
 
 Host tags work with `CreateTags`, `DeleteTags` and `DescribeTags`. When IAM enforcement is enabled, EC2 host release
 and instance lifecycle requests resolve each target resource ARN independently and evaluate its resource-tag conditions.
+`AllocateHosts` resolves the account/region-scoped `dedicated-host/*` resource, allowing a scoped creation grant
+without requiring `Resource: "*"`. This models the allocation resource namespace, not a pre-existing host ID.
 The IAM tests use registered non-root identities. The emulator's existing root/test-key bypasses still apply; these
 tests do not prove real AWS authorization or SigV4 correctness. AMI boot behavior, full EBS semantics, real capacity,
 physical scrubbing and actual billing still require separate verification.
