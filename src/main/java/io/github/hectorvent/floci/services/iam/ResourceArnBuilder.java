@@ -66,14 +66,15 @@ public class ResourceArnBuilder {
 
     private String buildStsArn(ContainerRequestContext context) {
         var parameters = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.read(context);
-        if (!"AssumeRole".equals(parameters.get("Action"))) { return "*"; }
+        String action = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.action(parameters);
+        if (!"AssumeRole".equals(action)) { return "*"; }
         String roleArn = parameters.get("RoleArn");
         return roleArn == null || roleArn.isBlank() ? "*" : roleArn;
     }
 
     private List<String> buildEc2Arns(ContainerRequestContext context, String region, String accountId) {
         var parameters = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.read(context);
-        String action = parameters.getOrDefault("Action", parameters.getOrDefault("Operation", ""));
+        String action = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.action(parameters);
         if ("AllocateHosts".equals(action)) {
             // AWS authorizes creation against dedicated-host ARNs before an ID exists.
             return List.of(AwsArnUtils.Arn.of("ec2", region, accountId, "dedicated-host/*").toString());

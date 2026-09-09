@@ -4,6 +4,8 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map;
 import java.util.UUID;
@@ -82,14 +84,15 @@ class AssumeRoleTrustPolicyIntegrationTest {
         createTrustedRoleInB(role, trust);
     }
 
-    @Test
-    void exactRoleIdentityGrantAllowsItsTrustedTarget() {
+    @ParameterizedTest
+    @ValueSource(strings = {"Action", "Operation"})
+    void exactRoleIdentityGrantAllowsItsTrustedTarget(String actionParameter) {
         String role = "scoped-ok-" + UUID.randomUUID().toString().substring(0, 8);
         String roleArn = "arn:aws:iam::" + ACCOUNT_B + ":role/" + role;
         ScopedIdentity identity = scopedUser(roleArn);
         trustIdentity(role, identity);
         given().header("Authorization", auth(identity.key(), "sts"))
-                .formParam("Action", "AssumeRole").formParam("RoleArn", roleArn)
+                .formParam(actionParameter, "AssumeRole").formParam("RoleArn", roleArn)
                 .formParam("RoleSessionName", "scoped")
                 .when().post("/").then().statusCode(200)
                 .body("AssumeRoleResponse.AssumeRoleResult.Credentials.AccessKeyId", startsWith("ASIA"));
@@ -103,6 +106,30 @@ class AssumeRoleTrustPolicyIntegrationTest {
         given().header("Authorization", auth(identity.key(), "sts"))
                 .formParam("Action", "AssumeRole").formParam("RoleArn", "arn:aws:iam::" + ACCOUNT_B + ":role/" + role)
                 .formParam("RoleSessionName", "scoped")
+                .when().post("/").then().statusCode(403).body(containsString("AccessDenied"));
+    }
+
+    @Test
+    void queryIdentityActionCannotHideAnAssumeRoleBody() {
+        String role = "query-shadow-" + UUID.randomUUID().toString().substring(0, 8);
+        ScopedIdentity identity = scopedUser("arn:aws:iam::" + ACCOUNT_B + ":role/some-other-role");
+        trustIdentity(role, identity);
+        given().header("Authorization", auth(identity.key(), "sts"))
+                .queryParam("Action", "GetCallerIdentity")
+                .formParam("Action", "AssumeRole").formParam("RoleArn", "arn:aws:iam::" + ACCOUNT_B + ":role/" + role)
+                .formParam("RoleSessionName", "shadow")
+                .when().post("/").then().statusCode(403).body(containsString("AccessDenied"));
+    }
+
+    @Test
+    void operationAliasCannotBypassTheIdentityPolicy() {
+        String role = "operation-alias-" + UUID.randomUUID().toString().substring(0, 8);
+        String roleArn = "arn:aws:iam::" + ACCOUNT_B + ":role/" + role;
+        ScopedIdentity identity = scopedUser("arn:aws:iam::" + ACCOUNT_B + ":role/some-other-role");
+        trustIdentity(role, identity);
+        given().header("Authorization", auth(identity.key(), "sts"))
+                .formParam("Operation", "AssumeRole").formParam("RoleArn", roleArn)
+                .formParam("RoleSessionName", "alias")
                 .when().post("/").then().statusCode(403).body(containsString("AccessDenied"));
     }
 

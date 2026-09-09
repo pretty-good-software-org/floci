@@ -14,6 +14,10 @@ public final class AwsQueryAuthorizationParameters {
 
     private AwsQueryAuthorizationParameters() {}
 
+    public static String action(Map<String, String> parameters) {
+        return parameters.getOrDefault("Action", parameters.getOrDefault("Operation", ""));
+    }
+
     public static Map<String, String> read(ContainerRequestContext context) {
         Object cached = context.getProperty(CACHE_KEY);
         if (cached instanceof Parameters parameters) { return parameters.values(); }
