@@ -36,8 +36,11 @@ created through IAM with a real trust policy.
   `sts:ExternalId` (the confused-deputy guard) is matched on its principal alone, so the role is
   assumable without passing `ExternalId`, and the `ExternalId` request parameter is ignored. This
   matches moto/LocalStack. Conditions *are* evaluated on the `AssumeRoleWithWebIdentity` path (see below).
-- **Only the trust policy is checked.** Cross-account `AssumeRole` in AWS also requires the caller's
-  own identity policy to allow `sts:AssumeRole`; that side is not enforced.
+- Registered IAM callers also need an identity-policy grant for the exact requested role ARN. Authorization
+  decodes `RoleArn` from the POST body and preserves the handler's first-value semantics for duplicate fields.
+  Account-root delegation uses the registered caller's ARN account, not the emulator's default account.
+- Existing root/test-key and unknown-credential bypasses remain. Unknown target roles remain permissive at the
+  trust-policy layer. These compatibility paths are not evidence of real AWS authorization enforcement.
 
 ## Web Identity Validation (IRSA)
 

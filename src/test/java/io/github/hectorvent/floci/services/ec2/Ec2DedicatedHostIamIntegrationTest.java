@@ -5,6 +5,8 @@ import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import java.util.Map;
 import java.util.UUID;
 
@@ -48,6 +50,24 @@ class Ec2DedicatedHostIamIntegrationTest {
                   "Resource":"arn:aws:ec2:us-east-1:000000000000:dedicated-host/*",
                   "Condition":{"StringEquals":{"ec2:ResourceTag/purpose":"builder","aws:RequestedRegion":"us-east-1"}}}]}
                 """);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "arn:aws:ec2:us-east-1:000000000000:dedicated-host/*,200",
+            "arn:aws:ec2:us-west-2:000000000000:dedicated-host/*,403",
+            "arn:aws:ec2:us-east-1:111111111111:dedicated-host/*,403",
+            "arn:aws:ec2:us-east-1:000000000000:instance/*,403"
+    })
+    void allocationGrantIsBoundToItsResourceAccountRegionAndType(String resource, int expectedStatus) {
+        String policy = """
+                {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ec2:AllocateHosts",
+                  "Resource":"%s"}]}
+                """.formatted(resource);
+        String key = userWithPolicy(policy);
+        Map<String, Object> parameters = Map.of("InstanceType", "mac2-m2.metal",
+                "AvailabilityZone", "us-east-1a", "Quantity", 1);
+        request(key, "ec2", "AllocateHosts", parameters).then().statusCode(expectedStatus);
     }
 
     @Test

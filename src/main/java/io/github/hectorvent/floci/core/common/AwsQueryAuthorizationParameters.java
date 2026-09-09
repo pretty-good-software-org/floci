@@ -8,9 +8,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Uses the same parameter source as the EC2 GET/POST controller, including duplicate-key precedence. */
+/** Preserves first-value semantics for AWS Query POST handlers and the EC2 GET handler. */
 public final class AwsQueryAuthorizationParameters {
-    private static final String CACHE_KEY = "floci.ec2AuthorizationParameters";
+    private static final String CACHE_KEY = "floci.awsQueryAuthorizationParameters";
 
     private AwsQueryAuthorizationParameters() {}
 
@@ -27,7 +27,7 @@ public final class AwsQueryAuthorizationParameters {
             try {
                 body = context.getEntityStream().readAllBytes();
             } catch (IOException error) {
-                throw new AwsException("InvalidParameterValue", "Authorize EC2 request: cannot read form body", 400);
+                throw new AwsException("InvalidParameterValue", "Authorize AWS query request: cannot read form body", 400);
             }
             context.setEntityStream(new ByteArrayInputStream(body));
             for (String pair : new String(body, StandardCharsets.UTF_8).split("&")) {
@@ -38,7 +38,7 @@ public final class AwsQueryAuthorizationParameters {
                     String value = parts.length == 2 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8) : "";
                     values.putIfAbsent(key, value);
                 } catch (IllegalArgumentException error) {
-                    throw new AwsException("InvalidParameterValue", "Authorize EC2 request: malformed form encoding", 400);
+                    throw new AwsException("InvalidParameterValue", "Authorize AWS query request: malformed form encoding", 400);
                 }
             }
         }
