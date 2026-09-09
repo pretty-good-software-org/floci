@@ -9,10 +9,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Uses the same parameter source as the EC2 GET/POST controller, including duplicate-key precedence. */
-public final class Ec2AuthorizationParameters {
+public final class AwsQueryAuthorizationParameters {
     private static final String CACHE_KEY = "floci.ec2AuthorizationParameters";
 
-    private Ec2AuthorizationParameters() {}
+    private AwsQueryAuthorizationParameters() {}
 
     public static Map<String, String> read(ContainerRequestContext context) {
         Object cached = context.getProperty(CACHE_KEY);

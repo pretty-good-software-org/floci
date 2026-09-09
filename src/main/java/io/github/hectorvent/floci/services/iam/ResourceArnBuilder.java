@@ -64,7 +64,7 @@ public class ResourceArnBuilder {
     }
 
     private List<String> buildEc2Arns(ContainerRequestContext context, String region, String accountId) {
-        var parameters = io.github.hectorvent.floci.core.common.Ec2AuthorizationParameters.read(context);
+        var parameters = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.read(context);
         String action = parameters.getOrDefault("Action", parameters.getOrDefault("Operation", ""));
         String prefix = switch (action) {
             case "ReleaseHosts" -> "HostId";

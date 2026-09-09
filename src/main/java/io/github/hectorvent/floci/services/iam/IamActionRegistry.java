@@ -111,7 +111,7 @@ public class IamActionRegistry {
      */
     public String resolve(String credentialScope, ContainerRequestContext ctx) {
         if ("ec2".equals(credentialScope)) {
-            var parameters = io.github.hectorvent.floci.core.common.Ec2AuthorizationParameters.read(ctx);
+            var parameters = io.github.hectorvent.floci.core.common.AwsQueryAuthorizationParameters.read(ctx);
             String action = parameters.getOrDefault("Action", parameters.get("Operation"));
             return action == null || action.isBlank() ? null : "ec2:" + action;
         }
